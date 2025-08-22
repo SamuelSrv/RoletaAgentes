@@ -21,10 +21,15 @@ body {
     max-width: 700px;
 }
 
-/* ✅ NOVO: ESTILO PARA O LOGO */
+/* ✅ ALTERAÇÃO APLICADA AQUI */
 .main-logo {
-    width: 120px; /* Define a largura do logo */
-    margin-bottom: 15px; /* Cria um espaço entre o logo e o título abaixo */
+    width: 120px; /* Largura do círculo */
+    height: 120px; /* Altura do círculo (igual à largura para ser perfeito) */
+    margin-bottom: 15px;
+    background-color: #fd4556; /* O mesmo vermelho usado no site */
+    border-radius: 50%; /* Transforma o fundo em um círculo */
+    padding: 15px; /* Adiciona um espaço interno para o logo não ficar colado na borda */
+    box-sizing: border-box; /* Garante que o padding não aumente o tamanho total */
 }
 
 h1, h2, h3 {
