@@ -21,6 +21,12 @@ body {
     max-width: 700px;
 }
 
+/* ✅ NOVO: ESTILO PARA O LOGO */
+.main-logo {
+    width: 120px; /* Define a largura do logo */
+    margin-bottom: 15px; /* Cria um espaço entre o logo e o título abaixo */
+}
+
 h1, h2, h3 {
     color: #fd4556;
     text-transform: uppercase;
