@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
         { name: 'Tavin', photo: 'img/players/player1.jpg' },
         { name: 'Nandin', photo: 'img/players/player2.jpg' },
         { name: 'Dryco', photo: 'img/players/player3.jpg' },
-        { name: 'Japa', photo: 'img/players/player4.jpg' }
+        { name: 'Japa', photo: 'img/players/player4.png' }
     ];
     // --- FIM DA CONFIGURAÇÃO ---
 
