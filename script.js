@@ -1,6 +1,26 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // --- PASSO 1: COLE A SUA CONFIGURAÇÃO DO FIREBASE AQUI ---
+    const firebaseConfig = {
+        apiKey: "AIzaSyAmQvUnFkO0h7TcAEEoxKizmFUAzahbc34",
+        authDomain: "roleta-valorant-sync.firebaseapp.com",
+        databaseURL: "https://roleta-valorant-sync-default-rtdb.firebaseio.com",
+        projectId: "roleta-valorant-sync",
+        storageBucket: "roleta-valorant-sync.firebasestorage.app",
+        messagingSenderId: "884907533630",
+        appId: "1:884907533630:web:9478d68833a6b076a4786f",
+        measurementId: "G-MTQRB6FYW5"
+    };
 
-    // --- CONFIGURAÇÃO ---
+    // --- FIM DA CONFIGURAÇÃO DO FIREBASE ---
+
+    // Inicializa o Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    // Referência para a nossa "sala" no banco de dados
+    const roomRef = database.ref('roleta/sala_unica');
+
+    // --- CONFIGURAÇÃO DO JOGO (Mesma de antes) ---
     const agents = [
         { name: 'Brimstone', image: 'img/agents/Brimstone_icon.webp', role: 'Controlador' },
         { name: 'Phoenix', image: 'img/agents/Phoenix_icon.webp', role: 'Duelista' },
@@ -34,37 +54,261 @@ document.addEventListener('DOMContentLoaded', () => {
         { name: 'Dryco', photo: 'img/players/player3.png' },
         { name: 'Japa', photo: 'img/players/player4.png' }
     ];
-    // --- FIM DA CONFIGURAÇÃO ---
 
-    // Elementos do DOM
+    // --- Elementos do DOM ---
     const roulette = document.getElementById('roulette');
     const spinButton = document.getElementById('spinButton');
     const playersList = document.getElementById('playersList');
     const agentBlockList = document.getElementById('agentBlockList');
     const toggleBlockListBtn = document.getElementById('toggleBlockListBtn');
     const filterButtonsContainer = document.getElementById('filterButtons');
-    const historySection = document.getElementById('historySection');
-    const historyList = document.getElementById('historyList');
+    const roomStatusEl = document.getElementById('room-status');
 
     const agentImageHeight = 75;
-
-    // Variáveis de Estado
-    let isRoundInProgress = false;
-    let availableAgents = [];
-    let currentPlayerIndex = 0;
-    let currentTeam = {}; // Guarda o agente de cada player na rodada
-    let teamHistory = []; // Guarda o histórico de times
-    let rerollsLeft = {}; // Guarda os rerolls de cada player
+    let localState = {}; // Guarda o estado atual para evitar re-renderizações desnecessárias
+    let isHost = false; // O usuário é o host da sala?
+    let currentAnimationTimeout = null; // Para controlar as animações
 
     // --- FUNÇÕES DE INICIALIZAÇÃO ---
 
     function initialize() {
-        createPlayerCards();
-        populateBlockList();
-        setupEventListeners();
-        setupRoulette();
+        createPlayerCards(); // Cria a estrutura visual dos players
+        populateBlockList(); // Cria a estrutura visual dos bloqueios
+        setupRoulette();     // Popula a roleta visualmente
+        checkHostStatus();   // Verifica se o usuário é o primeiro a chegar
+        listenToRoomChanges(); // A função mais importante: ouve as mudanças no Firebase
     }
 
+    function checkHostStatus() {
+        roomRef.transaction(currentData => {
+            if (currentData === null) {
+                // Se a sala não existe, este usuário é o host
+                isHost = true;
+                // Cria o estado inicial da sala
+                return {
+                    hostId: Math.random().toString(36).substr(2, 9),
+                    status: 'waiting', // waiting, spinning, finished
+                    activeFilter: 'Todos',
+                    blockedAgents: [],
+                    teamResult: null,
+                    spinTimestamp: 0 // Para sincronizar a animação
+                };
+            }
+            // Se a sala já existe, o usuário não é o host
+            isHost = false;
+            return; // Aborta a transação
+        }).then(result => {
+            if (result.committed && isHost) {
+                console.log("Você é o host da sala!");
+                setupHostControls();
+            } else if (!isHost) {
+                console.log("Você é um espectador.");
+                disableHostControls();
+            }
+        });
+    }
+
+    // Apenas o host pode clicar nos botões de controle
+    function setupHostControls() {
+        spinButton.addEventListener('click', startRound);
+        toggleBlockListBtn.addEventListener('click', () => agentBlockList.classList.toggle('hidden'));
+
+        filterButtonsContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('filter-btn')) {
+                const newFilter = e.target.dataset.role;
+                roomRef.child('activeFilter').set(newFilter);
+            }
+        });
+
+        agentBlockList.addEventListener('change', () => {
+            const blockedAgents = Array.from(document.querySelectorAll('#agentBlockList input:checked')).map(cb => cb.dataset.agentName);
+            roomRef.child('blockedAgents').set(blockedAgents);
+        });
+    }
+
+    // Espectadores têm os botões desabilitados
+    function disableHostControls() {
+        document.querySelectorAll('.filter-btn, #agentBlockList input, #toggleBlockListBtn').forEach(el => {
+            el.disabled = true;
+        });
+        spinButton.textContent = "Aguardando o Host...";
+        spinButton.disabled = true;
+    }
+
+    // --- FUNÇÃO PRINCIPAL: OUVINTE DO FIREBASE ---
+
+    function listenToRoomChanges() {
+        roomRef.on('value', (snapshot) => {
+            const roomData = snapshot.val();
+            if (!roomData) return; // Sala ainda não foi inicializada
+
+            localState = roomData; // Atualiza nosso estado local
+
+            // Atualiza a UI com os dados do Firebase
+            updateUIFromState();
+        });
+    }
+
+    // --- ATUALIZAÇÃO DA INTERFACE ---
+
+    function updateUIFromState() {
+        // Atualiza o filtro ativo
+        document.querySelector('.filter-btn.active').classList.remove('active');
+        document.querySelector(`.filter-btn[data-role="${localState.activeFilter}"]`).classList.add('active');
+
+        // Atualiza os agentes bloqueados
+        document.querySelectorAll('#agentBlockList input').forEach(checkbox => {
+            checkbox.checked = localState.blockedAgents && localState.blockedAgents.includes(checkbox.dataset.agentName);
+        });
+
+        // Controla o estado do jogo (a parte mais complexa)
+        handleGameState();
+    }
+
+    function handleGameState() {
+        clearTimeout(currentAnimationTimeout); // Limpa qualquer animação anterior
+
+        switch (localState.status) {
+            case 'waiting':
+                roomStatusEl.textContent = "Aguardando para iniciar a rodada...";
+                if (isHost) {
+                    spinButton.disabled = false;
+                    spinButton.textContent = 'INICIAR RODADA!';
+                }
+                clearPlayerResults();
+                break;
+
+            case 'spinning':
+                roomStatusEl.textContent = `Sorteando agentes...`;
+                spinButton.disabled = true;
+                spinButton.textContent = 'GIRANDO...';
+                clearPlayerResults();
+                animateSpinning();
+                break;
+
+            case 'finished':
+                roomStatusEl.textContent = `Time definido!`;
+                if (isHost) {
+                    spinButton.disabled = false;
+                    spinButton.textContent = 'INICIAR NOVA RODADA';
+                }
+                displayFinalResults();
+                break;
+        }
+    }
+
+    // --- LÓGICA DO JOGO (EXECUTADA APENAS PELO HOST) ---
+
+    function startRound() {
+        if (!isHost) return;
+
+        // Monta a lista de agentes disponíveis
+        let filteredAgents = agents.filter(agent => !localState.blockedAgents.includes(agent.name));
+        if (localState.activeFilter !== 'Todos') {
+            filteredAgents = filteredAgents.filter(agent => agent.role === localState.activeFilter);
+        }
+
+        if (filteredAgents.length < players.length) {
+            alert("Erro: Não há agentes suficientes para todos os players com os filtros atuais!");
+            return;
+        }
+
+        // Sorteia o time
+        const available = [...filteredAgents];
+        const teamResult = {};
+        players.forEach((player, index) => {
+            const winnerIndex = Math.floor(Math.random() * available.length);
+            teamResult[index] = available.splice(winnerIndex, 1)[0];
+        });
+
+        // Atualiza o Firebase, o que vai disparar a animação para todos
+        roomRef.update({
+            status: 'spinning',
+            teamResult: teamResult,
+            spinTimestamp: firebase.database.ServerValue.TIMESTAMP // Usa o tempo do servidor para sincronia
+        });
+    }
+
+    // --- ANIMAÇÕES E EXIBIÇÃO DE RESULTADOS (EXECUTADO POR TODOS) ---
+
+    function animateSpinning() {
+        let currentPlayerIndex = 0;
+
+        function spinForNextPlayer() {
+            if (currentPlayerIndex >= players.length) {
+                // Quando terminar a última animação, o host atualiza o estado para 'finished'
+                if (isHost) {
+                    roomRef.child('status').set('finished');
+                }
+                return;
+            }
+
+            const card = document.getElementById(`player-card-${currentPlayerIndex}`);
+            if (card) card.classList.add('active');
+
+            const winner = localState.teamResult[currentPlayerIndex];
+
+            // Animação da roleta
+            const allRouletteImages = Array.from(roulette.querySelectorAll('img'));
+            const targetImgIndex = allRouletteImages.findIndex((img, index) => index >= agents.length && img.alt === winner.name);
+            const finalPosition = (targetImgIndex * agentImageHeight);
+
+            roulette.style.transition = 'none';
+            roulette.style.transform = `translateY(0)`;
+
+            setTimeout(() => {
+                roulette.style.transition = 'transform 4s cubic-bezier(.15,.9,.32,1)';
+                roulette.style.transform = `translateY(-${finalPosition}px)`;
+            }, 50);
+
+            // Após a animação, mostra o resultado e chama o próximo
+            currentAnimationTimeout = setTimeout(() => {
+                displaySingleResult(currentPlayerIndex, winner);
+                if (currentPlayerIndex > 0) {
+                    document.getElementById(`player-card-${currentPlayerIndex - 1}`).classList.remove('active');
+                }
+                currentPlayerIndex++;
+                spinForNextPlayer();
+            }, 4500);
+        }
+
+        spinForNextPlayer();
+    }
+
+    // Mostra o resultado de apenas um jogador durante a animação
+    function displaySingleResult(playerIndex, agent) {
+        const resultDisplay = document.getElementById(`player-result-${playerIndex}`);
+        resultDisplay.innerHTML = `
+            <img src="${agent.image}" alt="${agent.name}">
+            <div class="agent-details">
+                <span class="agent-name">${agent.name}</span>
+                <span class="agent-role">${agent.role}</span>
+            </div>
+        `;
+        resultDisplay.classList.add('visible');
+    }
+
+    // Mostra todos os resultados de uma vez quando o estado é 'finished'
+    function displayFinalResults() {
+        clearPlayerResults();
+        players.forEach((_, index) => {
+            if (localState.teamResult[index]) {
+                displaySingleResult(index, localState.teamResult[index]);
+            }
+        });
+        document.querySelectorAll('.player-card').forEach(card => card.classList.remove('active'));
+    }
+
+    function clearPlayerResults() {
+        document.querySelectorAll('.player-card.active').forEach(card => card.classList.remove('active'));
+        players.forEach((_, index) => {
+            const resultDisplay = document.getElementById(`player-result-${index}`);
+            if (resultDisplay) resultDisplay.classList.remove('visible');
+        });
+    }
+
+
+    // --- FUNÇÕES DE SETUP VISUAL (Não precisam de sincronização) ---
     function createPlayerCards() {
         playersList.innerHTML = '';
         players.forEach((player, index) => {
@@ -81,7 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
             playersList.appendChild(card);
         });
     }
-    
+
     function populateBlockList() {
         agents.forEach(agent => {
             const item = document.createElement('div');
@@ -93,166 +337,10 @@ document.addEventListener('DOMContentLoaded', () => {
             agentBlockList.appendChild(item);
         });
     }
-    
-    function setupEventListeners() {
-        spinButton.addEventListener('click', startRound);
-        toggleBlockListBtn.addEventListener('click', () => agentBlockList.classList.toggle('hidden'));
-        filterButtonsContainer.addEventListener('click', (e) => {
-            if (e.target.classList.contains('filter-btn')) {
-                document.querySelector('.filter-btn.active').classList.remove('active');
-                e.target.classList.add('active');
-            }
-        });
-    }
 
     function setupRoulette() {
         const allAgentsForRoulette = [...agents, ...agents, ...agents, ...agents];
         roulette.innerHTML = allAgentsForRoulette.map(agent => `<img src="${agent.image}" alt="${agent.name}">`).join('');
-    }
-
-    // --- LÓGICA DA RODADA ---
-
-    function startRound() {
-        if (isRoundInProgress) return;
-
-        // 1. Montar a lista de agentes disponíveis baseada nos filtros
-        const activeFilter = document.querySelector('.filter-btn.active').dataset.role;
-        const blockedAgents = Array.from(document.querySelectorAll('#agentBlockList input:checked')).map(cb => cb.dataset.agentName);
-        
-        let filteredAgents = agents.filter(agent => !blockedAgents.includes(agent.name));
-        if (activeFilter !== 'Todos') {
-            filteredAgents = filteredAgents.filter(agent => agent.role === activeFilter);
-        }
-
-        if (filteredAgents.length < players.length) {
-            alert("Erro: Não há agentes suficientes para todos os players com os filtros atuais!");
-            return;
-        }
-
-        // 2. Iniciar o estado da rodada
-        isRoundInProgress = true;
-        spinButton.disabled = true;
-        spinButton.textContent = 'GIRANDO...';
-        clearPlayerResults();
-        
-        availableAgents = [...filteredAgents];
-        currentPlayerIndex = 0;
-        currentTeam = {};
-        players.forEach((_, index) => rerollsLeft[index] = 1); // 1 reroll por jogador
-
-        // 3. Iniciar o primeiro giro
-        spinForCurrentPlayer();
-    }
-    
-    function spinForCurrentPlayer(isReroll = false, playerIndexToReroll = -1) {
-        const targetPlayerIndex = isReroll ? playerIndexToReroll : currentPlayerIndex;
-
-        // Destaque do jogador ativo
-        document.getElementById(`player-card-${targetPlayerIndex}`).classList.add('active');
-        
-        // Sorteia o agente
-        const winnerIndex = Math.floor(Math.random() * availableAgents.length);
-        const winner = availableAgents[winnerIndex];
-        availableAgents.splice(winnerIndex, 1);
-        currentTeam[targetPlayerIndex] = winner;
-
-        // Animação da Roleta
-        const allRouletteImages = Array.from(roulette.querySelectorAll('img'));
-        const targetImgIndex = allRouletteImages.findIndex((img, index) => index >= agents.length && img.alt === winner.name);
-        const finalPosition = (targetImgIndex * agentImageHeight);
-        
-        roulette.style.transition = 'none';
-        roulette.style.transform = `translateY(0)`;
-        
-        setTimeout(() => {
-            roulette.style.transition = 'transform 5s cubic-bezier(.15,.9,.32,1)';
-            roulette.style.transform = `translateY(-${finalPosition}px)`;
-        }, 50);
-
-        // Após a animação
-        setTimeout(() => {
-            displayResult(targetPlayerIndex, winner);
-            
-            if (!isReroll) {
-                currentPlayerIndex++;
-                if (currentPlayerIndex < players.length) {
-                    setTimeout(spinForCurrentPlayer, 1000); // Próximo jogador
-                } else {
-                    finishRound();
-                }
-            }
-        }, 5500); // Tempo um pouco maior que a animação
-    }
-
-    function rerollForPlayer(playerIndex) {
-        if (rerollsLeft[playerIndex] <= 0 || !isRoundInProgress) return;
-
-        rerollsLeft[playerIndex]--;
-        
-        // Devolve o agente antigo para a lista de disponíveis
-        const oldAgent = currentTeam[playerIndex];
-        availableAgents.push(oldAgent);
-
-        // Limpa o resultado antigo e gira novamente
-        const resultDisplay = document.getElementById(`player-result-${playerIndex}`);
-        resultDisplay.innerHTML = '';
-        resultDisplay.classList.remove('visible');
-        
-        spinForCurrentPlayer(true, playerIndex);
-    }
-
-    function finishRound() {
-        isRoundInProgress = false;
-        spinButton.disabled = false;
-        spinButton.textContent = 'INICIAR NOVA RODADA';
-        saveAndDisplayHistory();
-        document.querySelectorAll('.reroll-btn').forEach(btn => btn.disabled = true);
-    }
-    
-    // --- FUNÇÕES DE EXIBIÇÃO E UTILIDADE ---
-
-    function displayResult(playerIndex, agent) {
-        const resultDisplay = document.getElementById(`player-result-${playerIndex}`);
-        resultDisplay.innerHTML = `
-            <img src="${agent.image}" alt="${agent.name}">
-            <div class="agent-details">
-                <span class="agent-name">${agent.name}</span>
-                <span class="agent-role">${agent.role}</span>
-            </div>
-            <button class="reroll-btn" id="reroll-btn-${playerIndex}" title="1 reroll restante">↻</button>
-        `;
-        resultDisplay.classList.add('visible');
-
-        document.getElementById(`reroll-btn-${playerIndex}`).addEventListener('click', (event) => {
-            rerollForPlayer(playerIndex);
-            event.target.disabled = true;
-            event.target.title = "Sem rerolls restantes";
-        });
-
-        // Remove o destaque do jogador anterior (se houver)
-        if (playerIndex > 0 && !document.getElementById(`player-card-${playerIndex}`).classList.contains('rerolling')) {
-            document.getElementById(`player-card-${playerIndex - 1}`).classList.remove('active');
-        }
-    }
-
-    function saveAndDisplayHistory() {
-        const teamString = players.map((player, index) => `${player.name}: ${currentTeam[index].name}`).join(', ');
-        teamHistory.unshift(teamString); // Adiciona no início
-        if(teamHistory.length > 5) teamHistory.pop(); // Mantém apenas os últimos 5
-
-        historyList.innerHTML = teamHistory.map(entry => `<div class="history-entry"><p>${entry}</p></div>`).join('');
-        historySection.classList.remove('hidden');
-    }
-
-    function clearPlayerResults() {
-        document.querySelectorAll('.player-card').forEach(card => card.classList.remove('active'));
-        players.forEach((_, index) => {
-            const resultDisplay = document.getElementById(`player-result-${index}`);
-            if(resultDisplay) {
-                resultDisplay.innerHTML = '';
-                resultDisplay.classList.remove('visible');
-            }
-        });
     }
 
     // --- INICIA A APLICAÇÃO ---

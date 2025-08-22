@@ -298,3 +298,12 @@ h1, h2, h3 {
     margin: 0;
     font-size: 14px;
 }
+
+.room-status {
+    background-color: #0f1923;
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+    font-weight: bold;
+    color: #fd4556;
+}
