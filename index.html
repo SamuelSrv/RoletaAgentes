@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roleta de Agentes - Valorant</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+        <h1>Roleta de Agentes</h1>
+
+        <div class="settings-container">
+            <div class="filters">
+                <h3>Filtrar por Função:</h3>
+                <div id="filterButtons" class="filter-buttons">
+                    <button class="filter-btn active" data-role="Todos">Todos</button>
+                    <button class="filter-btn" data-role="Duelista">Duelista</button>
+                    <button class="filter-btn" data-role="Controlador">Controlador</button>
+                    <button class="filter-btn" data-role="Iniciador">Iniciador</button>
+                    <button class="filter-btn" data-role="Sentinela">Sentinela</button>
+                </div>
+            </div>
+            <div class="blocking">
+                <h3>Bloquear Agentes: <button id="toggleBlockListBtn">Mostrar/Esconder</button></h3>
+                <div id="agentBlockList" class="agent-block-list hidden">
+                    </div>
+            </div>
+        </div>
+
+        <div class="roulette-wrapper">
+            <div id="roulette" class="roulette">
+                </div>
+        </div>
+
+        <button id="spinButton">INICIAR RODADA!</button>
+
+        <div class="divider"></div>
+
+        <h2>Players</h2>
+        <div id="playersList" class="players-list">
+            </div>
+
+        <div id="historySection" class="history-section hidden">
+            <div class="divider"></div>
+            <h2>Histórico de Times</h2>
+            <div id="historyList">
+                </div>
+        </div>
+
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
