@@ -15,8 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- FIM DA CONFIGURAÇÃO DO FIREBASE ---
 
     // Inicializa o Firebase
-    const app = initializeApp(firebaseConfig);
-    const analytics = getAnalytics(app);
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
 
     // Referência para a nossa "sala" no banco de dados. Todos verão a mesma sala.
     const roomRef = database.ref('roleta/sala_unica');
