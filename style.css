@@ -21,20 +21,23 @@ body {
     max-width: 700px;
 }
 
-/* ✅ ALTERAÇÃO APLICADA AQUI */
 .main-logo {
-    width: 120px; /* Largura do círculo */
-    height: 120px; /* Altura do círculo (igual à largura para ser perfeito) */
+    width: 120px;
+    height: 120px;
     margin-bottom: 15px;
-    background-color: #fd4556; /* O mesmo vermelho usado no site */
-    border-radius: 50%; /* Transforma o fundo em um círculo */
-    padding: 15px; /* Adiciona um espaço interno para o logo não ficar colado na borda */
-    box-sizing: border-box; /* Garante que o padding não aumente o tamanho total */
+    background-color: #fd4556;
+    border-radius: 50%;
+    padding: 15px;
+    box-sizing: border-box;
 }
 
 h1, h2, h3 {
     color: #fd4556;
     text-transform: uppercase;
+}
+
+h3 {
+    margin: 0; /* Remove a margem padrão para melhor alinhamento */
 }
 
 .room-status {
@@ -53,6 +56,31 @@ h1, h2, h3 {
     border-radius: 8px;
     padding: 15px;
     margin-bottom: 20px;
+}
+
+/* ✅ NOVO: Estilo para o cabeçalho dos filtros */
+.settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px; /* Espaço entre o título e os botões de filtro */
+}
+
+/* ✅ NOVO: Estilo para o botão de reset */
+.reset-btn {
+    background-color: #555;
+    color: #e0e0e0;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+    transition: background-color 0.2s;
+}
+
+.reset-btn:hover {
+    background-color: #777;
 }
 
 .filters h3, .blocking h3 {

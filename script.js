@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const roomRef = database.ref('roleta/sala_unica');
 
     // --- CONFIGURAÇÃO DO JOGO ---
-    const agents = [
+   const agents = [
         { name: 'Brimstone', image: 'img/agents/Brimstone_icon.webp', role: 'Controlador' },
         { name: 'Phoenix', image: 'img/agents/Phoenix_icon.webp', role: 'Duelista' },
         { name: 'Sage', image: 'img/agents/Sage_icon.webp', role: 'Sentinela' },
@@ -64,22 +64,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const toggleBlockListBtn = document.getElementById('toggleBlockListBtn');
     const filterButtonsContainer = document.getElementById('filterButtons');
     const roomStatusEl = document.getElementById('room-status');
+    const resetSettingsBtn = document.getElementById('resetSettingsBtn'); // ✅ NOVO: Pega o botão de reset
     
     const agentImageHeight = 75;
     let localState = {};
-    // ✅ REMOVIDO: A variável 'isHost' não é mais necessária.
     let currentAnimationTimeout = null;
 
     function initialize() {
         createPlayerCards();
         populateBlockList();
         setupRoulette();
-        setupEventListeners(); // ✅ ALTERADO: Configura os botões para todos.
+        setupEventListeners();
         listenToRoomChanges();
-        resetRoomIfNeeded(); // ✅ NOVO: Garante que a sala não fique travada se alguém fechar a página.
+        resetRoomIfNeeded();
     }
 
-    // ✅ NOVO: Reseta a sala para 'waiting' se ela estiver 'spinning' por mais de 30 segundos.
     function resetRoomIfNeeded() {
         roomRef.child('status').on('value', snapshot => {
             if (snapshot.val() === 'spinning') {
@@ -91,16 +90,26 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         return currentData;
                     });
-                }, 30000); // 30 segundos de timeout
+                }, 30000);
             }
         });
     }
 
-    // ✅ ALTERADO: Os botões de controle agora são configurados para todos os usuários.
     function setupEventListeners() {
         spinButton.addEventListener('click', tryStartRound);
         toggleBlockListBtn.addEventListener('click', () => agentBlockList.classList.toggle('hidden'));
         
+        // ✅ NOVO: Event listener para o botão de reset
+        resetSettingsBtn.addEventListener('click', () => {
+            if (localState.status !== 'spinning') {
+                // Atualiza o Firebase com os valores padrão
+                roomRef.update({
+                    activeFilter: 'Todos',
+                    blockedAgents: []
+                });
+            }
+        });
+
         filterButtonsContainer.addEventListener('click', (e) => {
             if (e.target.classList.contains('filter-btn') && localState.status !== 'spinning') {
                 const newFilter = e.target.dataset.role;
@@ -119,10 +128,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function listenToRoomChanges() {
         roomRef.on('value', (snapshot) => {
             let roomData = snapshot.val();
-            // Se a sala não existir, cria um estado inicial padrão.
             if (!roomData) {
                 roomData = { status: 'waiting', activeFilter: 'Todos', blockedAgents: [], teamResult: null };
-                roomRef.set(roomData); // Inicializa a sala no Firebase
+                roomRef.set(roomData);
             }
             localState = roomData;
             updateUIFromState();
@@ -142,12 +150,12 @@ document.addEventListener('DOMContentLoaded', () => {
         handleGameState();
     }
     
-    // ✅ ALTERADO: A lógica de habilitar/desabilitar botões agora é a mesma para todos.
     function handleGameState() {
         clearTimeout(currentAnimationTimeout);
         
         const isSpinning = localState.status === 'spinning';
-        document.querySelectorAll('.filter-btn, #agentBlockList input, #toggleBlockListBtn').forEach(el => el.disabled = isSpinning);
+        // Desabilita todos os controles de configuração (incluindo o reset) enquanto gira
+        document.querySelectorAll('.filter-btn, #agentBlockList input, #toggleBlockListBtn, .reset-btn').forEach(el => el.disabled = isSpinning);
         spinButton.disabled = isSpinning;
 
         switch(localState.status) {
@@ -172,15 +180,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ✅ ALTERADO: Esta função agora usa uma 'transação' para garantir que apenas uma pessoa possa iniciar.
     function tryStartRound() {
         roomRef.transaction(currentData => {
-            // Se alguém já começou a girar, a transação falha e não faz nada.
-            if (currentData && currentData.status === 'spinning') {
-                return; // Aborta
-            }
+            if (currentData && currentData.status === 'spinning') return;
 
-            // Se a sala não existe ou está disponível, este usuário se torna o "host" temporário.
             if (!currentData || currentData.status === 'waiting' || currentData.status === 'finished') {
                 const blockedAgents = currentData.blockedAgents || [];
                 let filteredAgents = agents.filter(agent => !blockedAgents.includes(agent.name));
@@ -190,7 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (filteredAgents.length < players.length) {
                     alert("Erro: Não há agentes suficientes para todos os players com os filtros atuais!");
-                    return; // Aborta
+                    return;
                 }
                 
                 const available = [...filteredAgents];
@@ -200,21 +203,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     teamResult[index] = available.splice(winnerIndex, 1)[0];
                 });
                 
-                // Retorna o novo estado que será salvo no Firebase
-                return {
-                    ...currentData,
-                    status: 'spinning',
-                    teamResult: teamResult
-                };
+                return { ...currentData, status: 'spinning', teamResult: teamResult };
             }
-        }, (error, committed, snapshot) => {
-            if (error) {
-                console.error("Transação falhou: ", error);
-            } else if (!committed) {
-                console.log("Alguém já iniciou a rodada!");
-            } else {
-                console.log("Rodada iniciada com sucesso!");
-            }
+        }, (error, committed) => {
+            if (error) console.error("Transação falhou: ", error);
+            else if (!committed) console.log("Alguém já iniciou a rodada!");
+            else console.log("Rodada iniciada com sucesso!");
         });
     }
 
@@ -222,14 +216,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let currentPlayerIndex = 0;
         
         function spinForNextPlayer() {
-            // Se o estado mudou (ex: por um reset), para a animação.
-            if (localState.status !== 'spinning') {
-                return;
-            }
-
+            if (localState.status !== 'spinning') return;
             if (currentPlayerIndex >= players.length) {
-                // Apenas o clique que iniciou a transação irá efetivamente mudar o estado.
-                // Mas podemos fazer isso para todos, pois não tem problema.
                 roomRef.child('status').set('finished');
                 return;
             }
@@ -267,13 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function displaySingleResult(playerIndex, agent) {
         const resultDisplay = document.getElementById(`player-result-${playerIndex}`);
         if (!resultDisplay) return;
-        resultDisplay.innerHTML = `
-            <img src="${agent.image}" alt="${agent.name}">
-            <div class="agent-details">
-                <span class="agent-name">${agent.name}</span>
-                <span class="agent-role">${agent.role}</span>
-            </div>
-        `;
+        resultDisplay.innerHTML = `<img src="${agent.image}" alt="${agent.name}"><div class="agent-details"><span class="agent-name">${agent.name}</span><span class="agent-role">${agent.role}</span></div>`;
         resultDisplay.classList.add('visible');
     }
 
@@ -298,11 +280,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Funções de setup visual que não precisam de alteração
     function createPlayerCards() { playersList.innerHTML = ''; players.forEach((player, index) => { const card = document.createElement('div'); card.className = 'player-card'; card.id = `player-card-${index}`; card.innerHTML = `<div class="player-info"><img src="${player.photo}" alt="Foto de ${player.name}" class="player-photo"><span class="player-name">${player.name}</span></div><div id="player-result-${index}" class="agent-result"></div>`; playersList.appendChild(card); }); }
     function populateBlockList() { agentBlockList.innerHTML = ''; agents.forEach(agent => { const item = document.createElement('div'); item.className = 'block-item'; item.innerHTML = `<input type="checkbox" id="block-${agent.name}" name="block-${agent.name}" data-agent-name="${agent.name}"><label for="block-${agent.name}">${agent.name}</label>`; agentBlockList.appendChild(item); }); }
     function setupRoulette() { const allAgentsForRoulette = [...agents, ...agents, ...agents, ...agents]; roulette.innerHTML = allAgentsForRoulette.map(agent => `<img src="${agent.image}" alt="${agent.name}">`).join(''); }
 
-    // --- INICIA A APLICAÇÃO ---
     initialize();
 });
