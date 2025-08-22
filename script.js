@@ -1,5 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- PASSO 1: COLE A SUA CONFIGURAÇÃO DO FIREBASE AQUI ---
+    // --- IMPORTANTE: COLE A SUA CONFIGURAÇÃO DO FIREBASE AQUI ---
+    // Vá no seu projeto no Firebase -> Configurações do Projeto -> Geral
+    // E copie o objeto 'firebaseConfig' aqui dentro.
     const firebaseConfig = {
         apiKey: "AIzaSyAmQvUnFkO0h7TcAEEoxKizmFUAzahbc34",
         authDomain: "roleta-valorant-sync.firebaseapp.com",
@@ -10,17 +12,16 @@ document.addEventListener('DOMContentLoaded', () => {
         appId: "1:884907533630:web:9478d68833a6b076a4786f",
         measurementId: "G-MTQRB6FYW5"
     };
-
     // --- FIM DA CONFIGURAÇÃO DO FIREBASE ---
 
     // Inicializa o Firebase
-    firebase.initializeApp(firebaseConfig);
-    const database = firebase.database();
+    const app = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(app);
 
-    // Referência para a nossa "sala" no banco de dados
+    // Referência para a nossa "sala" no banco de dados. Todos verão a mesma sala.
     const roomRef = database.ref('roleta/sala_unica');
 
-    // --- CONFIGURAÇÃO DO JOGO (Mesma de antes) ---
+    // --- CONFIGURAÇÃO DO JOGO ---
     const agents = [
         { name: 'Brimstone', image: 'img/agents/Brimstone_icon.webp', role: 'Controlador' },
         { name: 'Phoenix', image: 'img/agents/Phoenix_icon.webp', role: 'Duelista' },
@@ -67,143 +68,123 @@ document.addEventListener('DOMContentLoaded', () => {
     const agentImageHeight = 75;
     let localState = {}; // Guarda o estado atual para evitar re-renderizações desnecessárias
     let isHost = false; // O usuário é o host da sala?
-    let currentAnimationTimeout = null; // Para controlar as animações
-
-    // --- FUNÇÕES DE INICIALIZAÇÃO ---
+    let currentAnimationTimeout = null;
 
     function initialize() {
-        createPlayerCards(); // Cria a estrutura visual dos players
-        populateBlockList(); // Cria a estrutura visual dos bloqueios
-        setupRoulette();     // Popula a roleta visualmente
-        checkHostStatus();   // Verifica se o usuário é o primeiro a chegar
-        listenToRoomChanges(); // A função mais importante: ouve as mudanças no Firebase
+        createPlayerCards();
+        populateBlockList();
+        setupRoulette();
+        checkHostStatus();
+        listenToRoomChanges();
     }
 
     function checkHostStatus() {
         roomRef.transaction(currentData => {
             if (currentData === null) {
-                // Se a sala não existe, este usuário é o host
                 isHost = true;
-                // Cria o estado inicial da sala
                 return {
-                    hostId: Math.random().toString(36).substr(2, 9),
-                    status: 'waiting', // waiting, spinning, finished
+                    status: 'waiting',
                     activeFilter: 'Todos',
                     blockedAgents: [],
                     teamResult: null,
-                    spinTimestamp: 0 // Para sincronizar a animação
                 };
             }
-            // Se a sala já existe, o usuário não é o host
             isHost = false;
-            return; // Aborta a transação
+            return;
         }).then(result => {
             if (result.committed && isHost) {
                 console.log("Você é o host da sala!");
                 setupHostControls();
-            } else if (!isHost) {
+            } else {
                 console.log("Você é um espectador.");
                 disableHostControls();
             }
         });
     }
 
-    // Apenas o host pode clicar nos botões de controle
     function setupHostControls() {
         spinButton.addEventListener('click', startRound);
         toggleBlockListBtn.addEventListener('click', () => agentBlockList.classList.toggle('hidden'));
 
         filterButtonsContainer.addEventListener('click', (e) => {
-            if (e.target.classList.contains('filter-btn')) {
+            if (e.target.classList.contains('filter-btn') && localState.status !== 'spinning') {
                 const newFilter = e.target.dataset.role;
                 roomRef.child('activeFilter').set(newFilter);
             }
         });
 
         agentBlockList.addEventListener('change', () => {
-            const blockedAgents = Array.from(document.querySelectorAll('#agentBlockList input:checked')).map(cb => cb.dataset.agentName);
-            roomRef.child('blockedAgents').set(blockedAgents);
+            if (localState.status !== 'spinning') {
+                const blockedAgents = Array.from(document.querySelectorAll('#agentBlockList input:checked')).map(cb => cb.dataset.agentName);
+                roomRef.child('blockedAgents').set(blockedAgents);
+            }
         });
     }
 
-    // Espectadores têm os botões desabilitados
     function disableHostControls() {
-        document.querySelectorAll('.filter-btn, #agentBlockList input, #toggleBlockListBtn').forEach(el => {
-            el.disabled = true;
-        });
-        spinButton.textContent = "Aguardando o Host...";
+        document.querySelectorAll('.filter-btn, #agentBlockList input, #toggleBlockListBtn').forEach(el => el.disabled = true);
         spinButton.disabled = true;
     }
-
-    // --- FUNÇÃO PRINCIPAL: OUVINTE DO FIREBASE ---
 
     function listenToRoomChanges() {
         roomRef.on('value', (snapshot) => {
             const roomData = snapshot.val();
-            if (!roomData) return; // Sala ainda não foi inicializada
+            if (!roomData) return;
 
-            localState = roomData; // Atualiza nosso estado local
-
-            // Atualiza a UI com os dados do Firebase
+            localState = roomData;
             updateUIFromState();
         });
     }
 
-    // --- ATUALIZAÇÃO DA INTERFACE ---
-
     function updateUIFromState() {
-        // Atualiza o filtro ativo
-        document.querySelector('.filter-btn.active').classList.remove('active');
+        if (document.querySelector('.filter-btn.active')) {
+            document.querySelector('.filter-btn.active').classList.remove('active');
+        }
         document.querySelector(`.filter-btn[data-role="${localState.activeFilter}"]`).classList.add('active');
 
-        // Atualiza os agentes bloqueados
         document.querySelectorAll('#agentBlockList input').forEach(checkbox => {
             checkbox.checked = localState.blockedAgents && localState.blockedAgents.includes(checkbox.dataset.agentName);
         });
 
-        // Controla o estado do jogo (a parte mais complexa)
         handleGameState();
     }
 
     function handleGameState() {
-        clearTimeout(currentAnimationTimeout); // Limpa qualquer animação anterior
+        clearTimeout(currentAnimationTimeout);
+
+        const isSpinning = localState.status === 'spinning';
+        document.querySelectorAll('.filter-btn, #agentBlockList input, #toggleBlockListBtn').forEach(el => el.disabled = isSpinning || !isHost);
 
         switch (localState.status) {
             case 'waiting':
                 roomStatusEl.textContent = "Aguardando para iniciar a rodada...";
-                if (isHost) {
-                    spinButton.disabled = false;
-                    spinButton.textContent = 'INICIAR RODADA!';
-                }
+                spinButton.textContent = isHost ? 'INICIAR RODADA!' : 'Aguardando o Host...';
+                spinButton.disabled = !isHost;
                 clearPlayerResults();
                 break;
 
             case 'spinning':
                 roomStatusEl.textContent = `Sorteando agentes...`;
-                spinButton.disabled = true;
                 spinButton.textContent = 'GIRANDO...';
+                spinButton.disabled = true;
                 clearPlayerResults();
                 animateSpinning();
                 break;
 
             case 'finished':
                 roomStatusEl.textContent = `Time definido!`;
-                if (isHost) {
-                    spinButton.disabled = false;
-                    spinButton.textContent = 'INICIAR NOVA RODADA';
-                }
+                spinButton.textContent = isHost ? 'INICIAR NOVA RODADA' : 'Aguardando o Host...';
+                spinButton.disabled = !isHost;
                 displayFinalResults();
                 break;
         }
     }
 
-    // --- LÓGICA DO JOGO (EXECUTADA APENAS PELO HOST) ---
-
     function startRound() {
         if (!isHost) return;
 
-        // Monta a lista de agentes disponíveis
-        let filteredAgents = agents.filter(agent => !localState.blockedAgents.includes(agent.name));
+        const blockedAgents = localState.blockedAgents || [];
+        let filteredAgents = agents.filter(agent => !blockedAgents.includes(agent.name));
         if (localState.activeFilter !== 'Todos') {
             filteredAgents = filteredAgents.filter(agent => agent.role === localState.activeFilter);
         }
@@ -213,7 +194,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Sorteia o time
         const available = [...filteredAgents];
         const teamResult = {};
         players.forEach((player, index) => {
@@ -221,25 +201,18 @@ document.addEventListener('DOMContentLoaded', () => {
             teamResult[index] = available.splice(winnerIndex, 1)[0];
         });
 
-        // Atualiza o Firebase, o que vai disparar a animação para todos
         roomRef.update({
             status: 'spinning',
             teamResult: teamResult,
-            spinTimestamp: firebase.database.ServerValue.TIMESTAMP // Usa o tempo do servidor para sincronia
         });
     }
-
-    // --- ANIMAÇÕES E EXIBIÇÃO DE RESULTADOS (EXECUTADO POR TODOS) ---
 
     function animateSpinning() {
         let currentPlayerIndex = 0;
 
         function spinForNextPlayer() {
             if (currentPlayerIndex >= players.length) {
-                // Quando terminar a última animação, o host atualiza o estado para 'finished'
-                if (isHost) {
-                    roomRef.child('status').set('finished');
-                }
+                if (isHost) roomRef.child('status').set('finished');
                 return;
             }
 
@@ -247,8 +220,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (card) card.classList.add('active');
 
             const winner = localState.teamResult[currentPlayerIndex];
+            if (!winner) return; // Segurança caso os dados ainda não tenham chegado
 
-            // Animação da roleta
             const allRouletteImages = Array.from(roulette.querySelectorAll('img'));
             const targetImgIndex = allRouletteImages.findIndex((img, index) => index >= agents.length && img.alt === winner.name);
             const finalPosition = (targetImgIndex * agentImageHeight);
@@ -261,7 +234,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 roulette.style.transform = `translateY(-${finalPosition}px)`;
             }, 50);
 
-            // Após a animação, mostra o resultado e chama o próximo
             currentAnimationTimeout = setTimeout(() => {
                 displaySingleResult(currentPlayerIndex, winner);
                 if (currentPlayerIndex > 0) {
@@ -271,13 +243,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 spinForNextPlayer();
             }, 4500);
         }
-
         spinForNextPlayer();
     }
 
-    // Mostra o resultado de apenas um jogador durante a animação
     function displaySingleResult(playerIndex, agent) {
         const resultDisplay = document.getElementById(`player-result-${playerIndex}`);
+        if (!resultDisplay) return;
         resultDisplay.innerHTML = `
             <img src="${agent.image}" alt="${agent.name}">
             <div class="agent-details">
@@ -288,11 +259,10 @@ document.addEventListener('DOMContentLoaded', () => {
         resultDisplay.classList.add('visible');
     }
 
-    // Mostra todos os resultados de uma vez quando o estado é 'finished'
     function displayFinalResults() {
         clearPlayerResults();
         players.forEach((_, index) => {
-            if (localState.teamResult[index]) {
+            if (localState.teamResult && localState.teamResult[index]) {
                 displaySingleResult(index, localState.teamResult[index]);
             }
         });
@@ -303,12 +273,13 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.player-card.active').forEach(card => card.classList.remove('active'));
         players.forEach((_, index) => {
             const resultDisplay = document.getElementById(`player-result-${index}`);
-            if (resultDisplay) resultDisplay.classList.remove('visible');
+            if (resultDisplay) {
+                resultDisplay.classList.remove('visible');
+                resultDisplay.innerHTML = '';
+            }
         });
     }
 
-
-    // --- FUNÇÕES DE SETUP VISUAL (Não precisam de sincronização) ---
     function createPlayerCards() {
         playersList.innerHTML = '';
         players.forEach((player, index) => {
@@ -327,6 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function populateBlockList() {
+        agentBlockList.innerHTML = '';
         agents.forEach(agent => {
             const item = document.createElement('div');
             item.className = 'block-item';
@@ -343,6 +315,5 @@ document.addEventListener('DOMContentLoaded', () => {
         roulette.innerHTML = allAgentsForRoulette.map(agent => `<img src="${agent.image}" alt="${agent.name}">`).join('');
     }
 
-    // --- INICIA A APLICAÇÃO ---
     initialize();
 });

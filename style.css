@@ -26,6 +26,16 @@ h1, h2, h3 {
     text-transform: uppercase;
 }
 
+.room-status {
+    background-color: #0f1923;
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+    font-weight: bold;
+    color: #fd4556;
+    min-height: 24px;
+}
+
 /* Configurações, Filtros e Bloqueios */
 .settings-container {
     background-color: #0f1923;
@@ -127,9 +137,8 @@ h1, h2, h3 {
     color: #fd4556;
 }
 
-/* Animação de Desaceleração */
 .roulette {
-    transition: transform 5s cubic-bezier(.15,.9,.32,1);
+    transition: transform 4s cubic-bezier(.15,.9,.32,1);
 }
 
 .roulette img {
@@ -150,6 +159,7 @@ h1, h2, h3 {
     border-radius: 5px;
     cursor: pointer;
     transition: background-color 0.3s, transform 0.1s;
+    min-width: 250px;
 }
 
 #spinButton:disabled {
@@ -183,7 +193,6 @@ h1, h2, h3 {
     transition: all 0.4s;
 }
 
-/* Destaque do Jogador Ativo */
 .player-card.active {
     border-color: #fd4556;
     transform: scale(1.02);
@@ -216,7 +225,6 @@ h1, h2, h3 {
     color: #fff;
     visibility: hidden;
     opacity: 0;
-    /* Animação no Resultado */
     transform: scale(0.8);
     transition: opacity 0.5s, transform 0.5s;
     display: flex;
@@ -251,59 +259,4 @@ h1, h2, h3 {
     font-size: 12px;
     color: #aaa;
     text-transform: uppercase;
-}
-
-/* Botão de Reroll */
-.reroll-btn {
-    background: none;
-    border: none;
-    color: #fd4556;
-    font-size: 20px;
-    cursor: pointer;
-    margin-left: 15px;
-    opacity: 0.7;
-    transition: all 0.2s;
-}
-
-.reroll-btn:hover {
-    opacity: 1;
-    transform: rotate(360deg);
-}
-
-.reroll-btn:disabled {
-    color: #555;
-    cursor: not-allowed;
-    opacity: 0.3;
-}
-
-/* Histórico */
-.history-section.hidden {
-    display: none;
-}
-
-.history-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.history-entry {
-    background: #0f1923;
-    padding: 10px;
-    border-radius: 5px;
-    text-align: left;
-}
-
-.history-entry p {
-    margin: 0;
-    font-size: 14px;
-}
-
-.room-status {
-    background-color: #0f1923;
-    padding: 10px;
-    border-radius: 5px;
-    margin-bottom: 20px;
-    font-weight: bold;
-    color: #fd4556;
 }
