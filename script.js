@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const roomRef = database.ref('roleta/sala_unica');
 
     // --- CONFIGURAÇÃO DO JOGO ---
-   const agents = [
+  const agents = [
         { name: 'Brimstone', image: 'img/agents/Brimstone_icon.webp', role: 'Controlador' },
         { name: 'Phoenix', image: 'img/agents/Phoenix_icon.webp', role: 'Duelista' },
         { name: 'Sage', image: 'img/agents/Sage_icon.webp', role: 'Sentinela' },
@@ -64,7 +64,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const toggleBlockListBtn = document.getElementById('toggleBlockListBtn');
     const filterButtonsContainer = document.getElementById('filterButtons');
     const roomStatusEl = document.getElementById('room-status');
-    const resetSettingsBtn = document.getElementById('resetSettingsBtn'); // ✅ NOVO: Pega o botão de reset
+    const resetSettingsBtn = document.getElementById('resetSettingsBtn');
+    const restartRoundBtn = document.getElementById('restartRoundBtn'); // ✅ NOVO: Pega o botão de reiniciar
     
     const agentImageHeight = 75;
     let localState = {};
@@ -99,13 +100,22 @@ document.addEventListener('DOMContentLoaded', () => {
         spinButton.addEventListener('click', tryStartRound);
         toggleBlockListBtn.addEventListener('click', () => agentBlockList.classList.toggle('hidden'));
         
-        // ✅ NOVO: Event listener para o botão de reset
         resetSettingsBtn.addEventListener('click', () => {
             if (localState.status !== 'spinning') {
-                // Atualiza o Firebase com os valores padrão
                 roomRef.update({
                     activeFilter: 'Todos',
                     blockedAgents: []
+                });
+            }
+        });
+
+        // ✅ NOVO: Event listener para o botão de reiniciar rodada
+        restartRoundBtn.addEventListener('click', () => {
+            if (localState.status === 'finished') {
+                // Apenas volta o estado para 'waiting', limpando os resultados
+                roomRef.update({
+                    status: 'waiting',
+                    teamResult: null
                 });
             }
         });
@@ -154,9 +164,14 @@ document.addEventListener('DOMContentLoaded', () => {
         clearTimeout(currentAnimationTimeout);
         
         const isSpinning = localState.status === 'spinning';
-        // Desabilita todos os controles de configuração (incluindo o reset) enquanto gira
+        const isFinished = localState.status === 'finished';
+
+        // Desabilita os controles de configuração enquanto gira
         document.querySelectorAll('.filter-btn, #agentBlockList input, #toggleBlockListBtn, .reset-btn').forEach(el => el.disabled = isSpinning);
         spinButton.disabled = isSpinning;
+        
+        // Controla a visibilidade do botão de reiniciar
+        restartRoundBtn.style.display = isFinished ? 'block' : 'none';
 
         switch(localState.status) {
             case 'waiting':

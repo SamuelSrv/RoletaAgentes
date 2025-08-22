@@ -36,8 +36,8 @@ h1, h2, h3 {
     text-transform: uppercase;
 }
 
-h3 {
-    margin: 0; /* Remove a margem padrão para melhor alinhamento */
+h2, h3 {
+    margin: 0;
 }
 
 .room-status {
@@ -58,15 +58,13 @@ h3 {
     margin-bottom: 20px;
 }
 
-/* ✅ NOVO: Estilo para o cabeçalho dos filtros */
 .settings-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px; /* Espaço entre o título e os botões de filtro */
+    margin-bottom: 10px;
 }
 
-/* ✅ NOVO: Estilo para o botão de reset */
 .reset-btn {
     background-color: #555;
     color: #e0e0e0;
@@ -214,11 +212,19 @@ h3 {
 }
 
 /* Lista de Players */
+/* ✅ NOVO: Estilo para o cabeçalho da lista de players */
+.players-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px; /* Espaçamento para a lista de players abaixo */
+}
+
 .players-list {
     display: flex;
     flex-direction: column;
     gap: 15px;
-    margin-top: 20px;
+    margin-top: 0; /* Removida a margem que estava aqui */
 }
 
 .player-card {
